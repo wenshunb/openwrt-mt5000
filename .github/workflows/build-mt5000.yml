@@ -61,7 +61,8 @@ jobs:
           make defconfig
           for symbol in \
             TARGET_mediatek_filogic_DEVICE_glinet_gl-mt5000 \
-            PACKAGE_luci-ssl PACKAGE_kmod-wireguard PACKAGE_kmod-usb3; do
+            PACKAGE_luci-ssl PACKAGE_kmod-wireguard PACKAGE_kmod-usb3 \
+            PACKAGE_kmod-inet-diag PACKAGE_kmod-tun; do
             grep -qx "CONFIG_${symbol}=y" .config
           done
           ./scripts/diffconfig.sh > config.seed
