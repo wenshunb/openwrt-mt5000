@@ -79,7 +79,9 @@ jobs:
             source/staging_dir/toolchain-*
             source/build_dir/host
             source/build_dir/toolchain-*
-          key: toolchain-${{ runner.os }}-${{ env.SOURCE_SHA }}-${{ hashFiles('configs/mt5000.config', 'configs/feeds.conf') }}
+          key: toolchain-${{ runner.os }}-${{ env.SOURCE_SHA }}
+          restore-keys: |
+            toolchain-${{ runner.os }}-${{ env.SOURCE_SHA }}-
 
       - name: Restore downloaded package sources
         id: dl-cache
@@ -104,7 +106,7 @@ jobs:
 
       - name: Build host tools and cross toolchain
         id: toolchain-build
-        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        if: steps.toolchain-cache.outputs.cache-matched-key == ''
         working-directory: source
         run: make -j"$(nproc)" tools/install toolchain/install 2>&1 | tee toolchain.log
 
@@ -117,10 +119,10 @@ jobs:
             source/staging_dir/toolchain-*
             source/build_dir/host
             source/build_dir/toolchain-*
-          key: toolchain-${{ runner.os }}-${{ env.SOURCE_SHA }}-${{ hashFiles('configs/mt5000.config', 'configs/feeds.conf') }}
+          key: toolchain-${{ runner.os }}-${{ env.SOURCE_SHA }}
 
       - name: Trust restored toolchain
-        if: steps.toolchain-cache.outputs.cache-hit == 'true'
+        if: steps.toolchain-cache.outputs.cache-matched-key != ''
         working-directory: source
         run: |
           # Checkout gives every source file a fresh mtime, so drop the tools and
