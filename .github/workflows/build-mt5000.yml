@@ -84,6 +84,8 @@ jobs:
           fi
           cp ../configs/feeds.conf feeds.conf
           ./scripts/feeds update -a
+          git -C feeds/packages apply "$GITHUB_WORKSPACE/patches/sane-backends-scanner-group.patch"
+          ./scripts/feeds update -i packages
           ./scripts/feeds install -a
           cp ../configs/mt5000.config .config
           for package in "${extra_packages[@]}"; do
