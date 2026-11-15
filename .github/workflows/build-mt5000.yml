@@ -2,6 +2,12 @@ name: Build MT5000 experimental firmware
 
 on:
   workflow_dispatch:
+    inputs:
+      personal_packages:
+        description: Extra OpenWrt package names for the personal firmware, separated by spaces
+        required: true
+        type: string
+        default: 'ddns-scripts ddns-scripts-cloudflare luci-app-ddns luci-app-upnp luci-app-wol sing-box'
 
 permissions:
   contents: read
@@ -15,6 +21,11 @@ env:
 
 jobs:
   firmware:
+    name: Build ${{ matrix.profile }} firmware
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [base, personal]
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     defaults:
@@ -50,18 +61,49 @@ jobs:
 
       - name: Configure source and feeds
         working-directory: source
+        env:
+          PROFILE: ${{ matrix.profile }}
+          PERSONAL_PACKAGES: ${{ inputs.personal_packages }}
         run: |
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          extra_packages=()
+          if [[ "$PROFILE" == personal ]]; then
+            while IFS= read -r package; do
+              extra_packages+=("$package")
+            done < <(printf '%s\n' "$PERSONAL_PACKAGES" | tr '[:space:]' '\n' | sed '/^$/d' | sort -u)
+            if (( ${#extra_packages[@]} == 0 )); then
+              echo 'Provide at least one package name for the personal firmware.' >&2
+              exit 1
+            fi
+            for package in "${extra_packages[@]}"; do
+              if [[ ! "$package" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]]; then
+                echo 'Invalid package name. Enter names only, without version constraints or file paths.' >&2
+                exit 1
+              fi
+            done
+          fi
           cp ../configs/feeds.conf feeds.conf
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           cp ../configs/mt5000.config .config
+          for package in "${extra_packages[@]}"; do
+            symbol="CONFIG_PACKAGE_${package}=y"
+            if ! grep -Fxq "$symbol" .config; then
+              printf '%s\n' "$symbol" >> .config
+            fi
+          done
           make defconfig
           for symbol in \
             TARGET_mediatek_filogic_DEVICE_glinet_gl-mt5000 \
             PACKAGE_luci-ssl PACKAGE_kmod-wireguard PACKAGE_kmod-usb3 \
             PACKAGE_kmod-inet-diag PACKAGE_kmod-tun; do
             grep -qx "CONFIG_${symbol}=y" .config
+          done
+          for package in "${extra_packages[@]}"; do
+            if ! grep -Fxq "CONFIG_PACKAGE_${package}=y" .config; then
+              echo "Package '$package' could not be enabled for this target and feed set." >&2
+              exit 1
+            fi
           done
           ./scripts/diffconfig.sh > config.seed
           ./scripts/feeds list -s > feeds.buildinfo
@@ -85,7 +127,7 @@ jobs:
         uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: source/dl
-          key: dl-${{ env.SOURCE_SHA }}-${{ hashFiles('configs/mt5000.config', 'configs/feeds.conf') }}
+          key: dl-${{ env.SOURCE_SHA }}-${{ hashFiles('source/config.seed', 'configs/feeds.conf') }}
           restore-keys: |
             dl-${{ env.SOURCE_SHA }}-
             dl-
@@ -99,7 +141,7 @@ jobs:
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: source/dl
-          key: dl-${{ env.SOURCE_SHA }}-${{ hashFiles('configs/mt5000.config', 'configs/feeds.conf') }}
+          key: dl-${{ env.SOURCE_SHA }}-${{ hashFiles('source/config.seed', 'configs/feeds.conf') }}
 
       - name: Build host tools and cross toolchain
         id: toolchain-build
@@ -147,7 +189,7 @@ jobs:
       - name: Upload firmware and build records
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: mt5000-experimental-${{ github.run_number }}
+          name: mt5000-${{ matrix.profile }}-${{ github.run_number }}-attempt-${{ github.run_attempt }}
           path: artifacts/
           if-no-files-found: error
           retention-days: 30
@@ -157,7 +199,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: mt5000-logs-${{ github.run_number }}
+          name: mt5000-${{ matrix.profile }}-logs-${{ github.run_number }}-attempt-${{ github.run_attempt }}
           path: |
             source/build.log
             source/download.log
