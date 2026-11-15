@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  SOURCE_SHA: 996b7d3833d3e047c3df3bb6f0df586a483a12b2
+  SOURCE_SHA: 1713e8be63b628fe2f1d336f4fb3a8aa152875af
 
 jobs:
   firmware:
@@ -52,8 +52,6 @@ jobs:
         working-directory: source
         run: |
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-          git apply --check ../patches/0001-mt5000-preserve-sysupgrade-config.patch
-          git apply ../patches/0001-mt5000-preserve-sysupgrade-config.patch
           cp ../configs/feeds.conf feeds.conf
           ./scripts/feeds update -a
           ./scripts/feeds install -a
@@ -67,7 +65,6 @@ jobs:
           done
           ./scripts/diffconfig.sh > config.seed
           ./scripts/feeds list -s > feeds.buildinfo
-          git diff > applied.patch
           git rev-parse HEAD > source.commit
 
       - name: Restore host tools and cross toolchain
@@ -144,7 +141,7 @@ jobs:
         working-directory: source
         run: |
           python3 ../scripts/collect-firmware.py
-          cp config.seed feeds.buildinfo source.commit applied.patch ../artifacts/
+          cp config.seed feeds.buildinfo source.commit ../artifacts/
           cp .config ../artifacts/build.config
 
       - name: Upload firmware and build records
